@@ -9,8 +9,8 @@ import utils
 signal.signal(signal.SIGINT, utils.signal_handler)
 
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-myip = '127.0.0.1' #loopback only for now
-s.bind((myip, int(sys.argv[1])))
+#myip = '127.0.0.1' #loopback only for now
+s.bind((sys.argv[1], int(sys.argv[2])))
 s.listen(1)
 print colored("Waiting for a connection...","red")
 (clientsocket, addr) = s.accept()

@@ -18,6 +18,7 @@ def main():
     parser.add_argument("--exit", help="run as an exit node", action="store_true")
     parser.add_argument("--dbg", help="use public.pem and private.pem", action="store_true")
     parser.add_argument("--proxy", help="run as http proxy node", action="store_true")
+    parser.add_argument("node_ip", help="the ip address of this node")
     parser.add_argument("portno", type=int, help="the port this node should listen on")
     parser.add_argument("dir_auth_ip", help="the ip address of the directory authority")
     parser.add_argument("dir_auth_port", type=int, help="the port number of the directory authority")
@@ -26,7 +27,7 @@ def main():
     proxy = args.proxy
     # Set up listening server
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    myip = '127.0.0.1' #loopback only for now
+    myip = args.node_ip #loopback only for now
     s.bind((myip, args.portno))
     global portstring
     portstring = str(args.portno)

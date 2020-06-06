@@ -10,6 +10,7 @@ from termcolor import colored
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("dir_auth_ip", help="the ip address of the directory authority")
     parser.add_argument("dir_auth_port", help="the port number of the directory authority")
     args = parser.parse_args()
 
@@ -28,7 +29,7 @@ def main():
     da_mykey = RSA.importKey(da_private)
 
     #read in Port from command line args
-    da_IP = "127.0.0.1"
+    da_IP = args.dir_auth_ip
     da_port = args.dir_auth_port
 
 
