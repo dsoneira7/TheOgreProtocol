@@ -2,7 +2,6 @@ from Crypto.PublicKey import RSA
 from Crypto.Cipher import AES
 from Crypto import Random
 import socket
-from signatures import sign,verify
 import utils
 import sys
 import threading
