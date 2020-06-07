@@ -55,13 +55,11 @@ def main():
     # Replace this with processed route and key data
     hoplist = utils.process_route(hop_data)
     hoplist = list(reversed(hoplist))
-
     # Send keys and establish link
     run_client(hoplist, utils.packHostPort(DEST_HOST, int(DEST_PORT)))
 
 
 def run_client(hoplist, destination):
-
     next_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     next_host = (hoplist[len(hoplist) - 1][0], hoplist[len(hoplist) - 1][1])
     next_s.connect(next_host)

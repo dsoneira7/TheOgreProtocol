@@ -83,6 +83,7 @@ def startSession(prevhop, mykey, is_exit):
         return
     nexthost, nextport = utils.unpackHostPort(hostport)
     nexthop = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    print "nextHostIP:port " + str(nexthost) + ":" + str(nextport)
     nexthop.connect((nexthost, nextport))
     if nextmessage != "":
         utils.send_message_with_length_prefix(nexthop, nextmessage)
