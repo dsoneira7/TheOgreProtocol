@@ -26,40 +26,48 @@ def main():
     da_pub_key = da_file.read()
     da_pub_key = RSA.importKey(da_pub_key)
 
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect((DA_IP, int(DA_PORT)))
-    s.send('r')  # specify request type (route)
+    while True:
+        print "Type the message you want to send:"
+        message = raw_input()
+        if message == "":
+            quit()
 
-    # construct and send an aes key
-    randfile = Random.new()
-    aes_key = randfile.read(32)
-    aes_obj = aes_obj = AES.new(aes_key, AES.MODE_CBC, "0" * 16)
-    aes_msg = da_pub_key.encrypt(aes_key, 0)[0]
-    succ = utils.send_message_with_length_prefix(s, aes_msg)
-    if not succ:
-        s.close()
-        print "Directory authority connection failed"
-        quit()
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect((DA_IP, int(DA_PORT)))
+        s.send('r')  # specify request type (route)
 
-    # Receive
-    data = utils.recv_message_with_length_prefix(
-        s)  # All info from directory authority
-    if data == "":
-        s.close()
-        print "Directory authority connection failed"
-        quit()
+        # construct and send an aes key
+        randfile = Random.new()
+        aes_key = randfile.read(32)
+        print "AESKEY: " + str(aes_key)
+        print "AESKEY.LENGHT" + str(len(aes_key))
+        aes_obj = AES.new(aes_key, AES.MODE_CBC, "0" * 16)
+        aes_msg = da_pub_key.encrypt(aes_key, 0)[0]
+        succ = utils.send_message_with_length_prefix(s, aes_msg)
+        if not succ:
+            s.close()
+            print "Directory authority connection failed"
+            quit()
 
-    hop_data = aes_obj.decrypt(data)
+        # Receive
+        data = utils.recv_message_with_length_prefix(
+            s)  # All info from directory authority
+        if data == "":
+            s.close()
+            print "Directory authority connection failed"
+            quit()
 
-    # hoplist format (ip, port, public_key)
-    # Replace this with processed route and key data
-    hoplist = utils.process_route(hop_data)
-    hoplist = list(reversed(hoplist))
-    # Send keys and establish link
-    run_client(hoplist, utils.packHostPort(DEST_HOST, int(DEST_PORT)))
+        hop_data = aes_obj.decrypt(data)
+
+        # hoplist format (ip, port, public_key)
+        # Replace this with processed route and key data
+        hoplist = utils.process_route(hop_data)
+        hoplist = list(reversed(hoplist))
+        # Send keys and establish link
+        run_client(hoplist, utils.packHostPort(DEST_HOST, int(DEST_PORT)), message)
 
 
-def run_client(hoplist, destination):
+def run_client(hoplist, destination, message):
     next_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     next_host = (hoplist[len(hoplist) - 1][0], hoplist[len(hoplist) - 1][1])
     next_s.connect(next_host)
@@ -69,23 +77,20 @@ def run_client(hoplist, destination):
 
     utils.send_message_with_length_prefix(next_s, wrapped_message)
 
-    while True:
-        print colored("CLIENT: Type some text to send through the network.", 'yellow')
-        message = raw_input()
-        message = utils.add_all_layers(aes_key_list, message)
-        try:
-            utils.send_message_with_length_prefix(next_s, message)
-        except socket.error, e:
-            print "client detected node closing, finished!"
-            return
-        try:
-            response = utils.recv_message_with_length_prefix(next_s)
-        except socket.error, e:
-            print "client detected node closing, finished!"
-            return
-        response = utils.peel_all_layers(aes_key_list, response)
-        print colored("CLIENT: response from server:", 'red')
-        print colored(response, 'red')
+    message = utils.add_all_layers(aes_key_list, message)
+    try:
+        utils.send_message_with_length_prefix(next_s, message)
+    except socket.error, e:
+        print "client detected node closing, finished!"
+        return
+    try:
+        response = utils.recv_message_with_length_prefix(next_s)
+    except socket.error, e:
+        print "client detected node closing, finished!"
+        return
+    response = utils.peel_all_layers(aes_key_list, response)
+    print colored("CLIENT: response from server:", 'red')
+    print colored(response, 'red')
 
 
 if __name__ == "__main__":

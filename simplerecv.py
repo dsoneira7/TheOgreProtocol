@@ -1,6 +1,5 @@
 import socket
 import sys
-import os
 import signal
 from termcolor import colored
 
@@ -12,16 +11,17 @@ s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 # myip = '127.0.0.1' #loopback only for now
 s.bind((sys.argv[1], int(sys.argv[2])))
 s.listen(1)
-print colored("Waiting for a connection...", "red")
-(clientsocket, addr) = s.accept()
-print colored("Accepted a connection!", "red")
+
 while True:
+    print colored("Waiting for a connection...", "red")
+    (clientsocket, addr) = s.accept()
+    print colored("Accepted a connection!", "red")
     message = utils.recv_message_with_length_prefix(clientsocket)
     if message == "":
         sys.exit(0)
     print colored("Anonymous Message:\n" + message, 'yellow')
     print colored("Please type a reponse.", "red")
-    revmessage = raw_input()
+    revmessage = "SUCCESS"
     if revmessage == "QUIT":
         try:
             clientsocket.shutdown(socket.SHUT_RDWR)

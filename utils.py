@@ -60,6 +60,7 @@ def unwrap_message(blob, rsa_key):
 
     ciphertext_rsa = blob[0:128]
     ciphertext_aes = blob[128:len(blob)]
+    print str(len(blob))
     aes_key = rsa_key.decrypt(ciphertext_rsa)
     aes_obj = AES.new(aes_key, AES.MODE_CBC, "0" * 16)
     message = aes_obj.decrypt(ciphertext_aes)
