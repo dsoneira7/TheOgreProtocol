@@ -140,6 +140,10 @@ def packRoute(hoplist):
 
 
 def wrap_all_messages(hoplist, destination):
+    #We generate the padding random blocks to respect the global length of the extended onion
+    random_blocks = generate_random_blocks(HOP_LIMIT - len(hoplist))
+    dummy_paddings = generate_dummy_paddings()
+
     randfile = Random.new()
     wrapped_message = destination
     aes_key_list = []
@@ -183,3 +187,22 @@ def process_route(data):
 def signal_handler(received_signal, frame):
     os.killpg(os.getpgid(0), signal.SIGINT)
     sys.exit(0)
+
+
+def generate_random_blocks(n_random_blocks):
+    random_blocks = []
+    for i in range(n_random_blocks):
+        random_blocks[i] = generateRandomBlock()
+    return random_blocks
+
+
+def generate_random_block():
+    #TODO Add function to generate 256 bits random blocks
+    return 1
+
+def generate_dummy_paddings(hoplist, aes_key_list){
+    padding_map = [][]
+
+    for i in range (0, len(hoplist)-1):
+
+}
