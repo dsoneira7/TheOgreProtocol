@@ -1,6 +1,9 @@
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import AES
 from Crypto import Random
+from Crypto.Protocol.KDF import PBKDF2
+from numpy import random
+import config
 import struct
 import socket
 import signal
@@ -141,7 +144,7 @@ def packRoute(hoplist):
 
 def wrap_all_messages(hoplist, destination):
     #We generate the padding random blocks to respect the global length of the extended onion
-    random_blocks = generate_random_blocks(HOP_LIMIT - len(hoplist))
+    random_blocks = generate_random_blocks(config.HOP_LIMIT - len(hoplist))
     dummy_paddings = generate_dummy_paddings()
 
     randfile = Random.new()
@@ -192,17 +195,31 @@ def signal_handler(received_signal, frame):
 def generate_random_blocks(n_random_blocks):
     random_blocks = []
     for i in range(n_random_blocks):
-        random_blocks[i] = generateRandomBlock()
+        random_blocks[i] = random.bytes(256)
     return random_blocks
 
 
-def generate_random_block():
-    #TODO Add function to generate 256 bits random blocks
-    return 1
+#TODO: COMENTAR PARA EXPLICAR CODIGO, OU FACELO UN POUCO MAIS COMPRENSIBLE.
+def generate_dummy_paddings(hoplist, aes_key_list):
+    padding_map = [[]]
 
-def generate_dummy_paddings(hoplist, aes_key_list){
-    padding_map = [][]
+    reverse_hoplist = list(reversed(hoplist))
+    reverse_aes_key_list = list(reversed)
 
-    for i in range (0, len(hoplist)-1):
+    aes_obj_list = []
+    for i in range (0, len(reverse_hoplist)-1):
+        aes_obj_list[i] = AES.new(reverse_aes_key_list[i],AES.MODE_CBC, "0" * 16)
 
-}
+    for i in range (0, len(reverse_hoplist)-1):
+        padding_map[0][i] = PBKDF2(
+            reverse_aes_key_list[i],
+            packHostPort(hoplist[i][0], hoplist[i][1]),
+            256,
+            config.KDF_ITERATIONS)
+
+        k = i
+        for j in range(0, i-1):
+            padding_map[j][k] = aes_obj_list[k].decrypt(padding_map[j-1][k])
+            k += 1
+
+    return padding_map
