@@ -15,7 +15,6 @@ proxy = False
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--exit", help="run as an exit node", action="store_true")
     parser.add_argument("--dbg", help="use public.pem and private.pem", action="store_true")
     parser.add_argument("--proxy", help="run as http proxy node", action="store_true")
     parser.add_argument("node_ip", help="the ip address of this node")
@@ -44,12 +43,7 @@ def main():
     else:
         dir_auth = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         dir_auth.connect((args.dir_auth_ip, args.dir_auth_port))
-        result = 0
-        # send an 'e' for exit node here, 'n' for relay node
-        if args.exit:
-            result = dir_auth.send("e")
-        else:
-            result = dir_auth.send("n")
+        result = dir_auth.send("n")
         if result == 0:
             print colored("N[" + portstring + "]: The directory authority went offline during registration! Terminating relay process...", 'cyan')
             sys.exit(1)
@@ -63,10 +57,11 @@ def main():
     #The while condition here dictates how long the node is up
     while True:
         clientsocket, addr = s.accept()
-        threading.Thread(target=startSession, args=(clientsocket, mykey, args.exit, utils.packHostPort(myip, args.portno))).start()
+        threading.Thread(target=startSession, args=(clientsocket, mykey, utils.packHostPort(myip, args.portno))).start()
         print colored("N[" + portstring + "]: New session started", 'cyan')
 
-def startSession(prevhop, mykey, is_exit, my_hostport):
+
+def startSession(prevhop, mykey, my_hostport):
     # THREAD BOUNDARY
     # need this node to have its own key pair
     try:
@@ -85,23 +80,34 @@ def startSession(prevhop, mykey, is_exit, my_hostport):
         prevhop.shutdown(socket.SHUT_RDWR)
         return
 
-    nextmessage = utils.add_new_padding(nextmessage, routemessage[(len(routemessage) - 144):], my_hostport, aeskey)
-    nexthost, nextport = utils.unpackHostPort(hostport)
-    nexthop = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    print colored("N[" + portstring + "]: nextHostIP:port " + str(nexthost) + ":" + str(nextport), 'cyan')
-    nexthop.connect((nexthost, nextport))
-    if nextmessage != "":
-        utils.send_message_with_length_prefix(nexthop, nextmessage)
-    #spawn forwarding and backwarding threads here
-    fwd = threading.Thread(target=forwardingLoop, args=(prevhop, nexthop, aeskey, is_exit))
-    bwd = threading.Thread(target=backwardingLoop, args=(prevhop, nexthop, aeskey, is_exit))
-    fwd.start()
-    bwd.start()
-    fwd.join()
-    bwd.join()
-    return
+    if hostport == "0"*8:
+        this_is_destiny(nextmessage)
+        return
 
-def forwardingLoop(prevhop, nexthop, aeskey, is_exit):
+    else:
+        nextmessage = utils.add_new_padding(nextmessage, routemessage[(len(routemessage) - 144):], my_hostport, aeskey)
+        nexthost, nextport = utils.unpackHostPort(hostport)
+        nexthop = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        print colored("N[" + portstring + "]: nextHostIP:port " + str(nexthost) + ":" + str(nextport), 'cyan')
+        nexthop.connect((nexthost, nextport))
+        if nextmessage != "":
+            utils.send_message_with_length_prefix(nexthop, nextmessage)
+        #spawn forwarding and backwarding threads here
+        fwd = threading.Thread(target=forwardingLoop, args=(prevhop, nexthop, aeskey))
+        bwd = threading.Thread(target=backwardingLoop, args=(prevhop, nexthop, aeskey))
+        fwd.start()
+        bwd.start()
+        fwd.join()
+        bwd.join()
+        return
+
+
+def this_is_destiny(message):
+    message = utils.unpad_message(message)
+    print colored("N[" + portstring + "]: Anonymous message: " + message)
+
+
+def forwardingLoop(prevhop, nexthop, aeskey):
     while True:
         try:
             message = utils.recv_message_with_length_prefix(prevhop)
@@ -116,14 +122,8 @@ def forwardingLoop(prevhop, nexthop, aeskey, is_exit):
                 pass
             return
         message = utils.peel_layer(message, aeskey)
-        if is_exit:
-            message = utils.unpad_message(message)
-        bytessent = 0
         try:
-            if (is_exit and proxy):
-                bytessent = nexthop.sendall(message)
-            else:
-                bytessent = utils.send_message_with_length_prefix(nexthop, message)
+            bytessent = utils.send_message_with_length_prefix(nexthop, message)
             print colored("N[" + portstring + "]: Hopped forwards", 'cyan')
         except socket.error, e:
             pass
@@ -136,21 +136,14 @@ def forwardingLoop(prevhop, nexthop, aeskey, is_exit):
                 pass
             return
 
-def backwardingLoop(prevhop, nexthop, aeskey, is_exit):
+def backwardingLoop(prevhop, nexthop, aeskey):
     while True:
         message = ""
-        if (is_exit and proxy):
-            while True:
-                data = nexthop.recv(1024)
-                if len(data) > 0:
-                    message += data
-                else:
-                    break
-        else:
-            try:
-                message = utils.recv_message_with_length_prefix(nexthop)
-            except socket.error, e:
-                message = ""
+
+        try:
+            message = utils.recv_message_with_length_prefix(nexthop)
+        except socket.error, e:
+            message = ""
         if message == "":
             #closing sockets may screw with other threads that use them
             try:
@@ -159,10 +152,7 @@ def backwardingLoop(prevhop, nexthop, aeskey, is_exit):
             except socket.error, e:
                 pass
             return
-        if is_exit:
-            message = utils.add_layer(utils.pad_message(message), aeskey)
-        else:
-            message = utils.add_layer(message, aeskey)
+        message = utils.add_layer(message, aeskey)
         bytessent = 0
         try:
             bytessent = utils.send_message_with_length_prefix(prevhop, message)

@@ -31,14 +31,12 @@ def unpad_message(message):
 
 
 def add_layer(message, aes_key):
-    aes_obj = AES.new(aes_key, AES.MODE_CBC, "0" * 16)
-    ciphertext = aes_obj.encrypt(message)
+    ciphertext = aes_encrypt(message, aes_key)
     return ciphertext
 
 
 def peel_layer(ciphertext, aes_key):
-    aes_obj = AES.new(aes_key, AES.MODE_CBC, "0" * 16)
-    message = aes_obj.decrypt(ciphertext)
+    message = aes_decrypt(ciphertext, aes_key)
     return message
 
 # uses the PUBLIC key in 'key' to encrypt
@@ -50,8 +48,7 @@ def wrap_message(message, rsa_key, aes_key):
     # encrypt 'k' with RSA key (param 'key')
     # assemble final blob, then return it
 
-    aes_obj = AES.new(aes_key, AES.MODE_CBC, "0" * 16)
-    ciphertext_aes = aes_obj.encrypt(message)
+    ciphertext_aes = aes_encrypt(message, aes_key)
     ciphertext_rsa = rsa_key.encrypt(aes_key, rsa_key.publickey())[0]
     blob = ciphertext_rsa + ciphertext_aes
     return blob
@@ -67,9 +64,7 @@ def unwrap_message(blob, rsa_key):
     ciphertext_aes = blob[128:len(blob)]
     print str(len(blob))
     aes_key = rsa_key.decrypt(ciphertext_rsa)
-    aes_obj = AES.new(aes_key, AES.MODE_CBC, "0" * 16)
-    message = aes_obj.decrypt(ciphertext_aes)
-    # print "length of aes key: " + str(len(aes_key))
+    message = aes_decrypt(ciphertext_aes, aes_key)
     return message, aes_key
 
 # assumes 'message' is no longer than 4096 bytes
@@ -150,7 +145,7 @@ def wrap_all_messages(hoplist, message):
     dummy_paddings = generate_dummy_paddings()
 
     randfile = Random.new()
-    wrapped_message = message
+    wrapped_message = "0"*8 + message
     aes_key_list = []
     ciphered_tags = []
     packedroute = ""
@@ -177,11 +172,10 @@ def wrap_all_messages(hoplist, message):
         ciphered_tags.append(rsa_key.encrypt(ciphered_tag, rsa_key.publickey())[0])
 
         if i != len(hoplist - 1):
-            aes_obj = AES.new(elem_aes_key, AES.MODE_CBC, "0" * 16)
             for x in range(0, len(ciphered_tags)):
-                ciphered_tags[x] = aes_obj.encrypt(ciphered_tags[x])
+                ciphered_tags[x] = aes_encrypt(ciphered_tags[x], elem_aes_key)
             for x in range(0, len(random_blocks)):
-                random_blocks[x] = aes_obj.encrypt(random_blocks[x])
+                random_blocks[x] = aes_encrypt(random_blocks[x], elem_aes_key)
 
 
         packedroute = packHostPort(hoplist[i][0], hoplist[i][1])
@@ -243,10 +237,6 @@ def generate_dummy_paddings(hoplist, aes_key_list):
     reverse_hoplist = list(reversed(hoplist))
     reverse_aes_key_list = list(reversed(aes_key_list))
 
-    aes_obj_list = []
-    for i in range(0, len(reverse_hoplist)-1):
-        aes_obj_list[i] = AES.new(reverse_aes_key_list[i],AES.MODE_CBC, "0" * 16)
-
     for i in range(0, len(reverse_hoplist)-1):
         padding_map[0][i] = PBKDF2(
             reverse_aes_key_list[i],
@@ -256,7 +246,7 @@ def generate_dummy_paddings(hoplist, aes_key_list):
 
         k = i
         for j in range(0, i-1):
-            padding_map[j][k] = aes_obj_list[k].decrypt(padding_map[j-1][k])
+            padding_map[j][k] = aes_decrypt(padding_map[j-1][k], reverse_aes_key_list[k])
             k += 1
 
     return padding_map
@@ -274,6 +264,19 @@ def add_new_padding(onion, old_padding, hostport, aes_key):
             hostport,
             48,
             config.KDF_ITERATIONS)
-    aes_obj = AES.new(aes_key, AES.MODE_CBC, "0" * 16)
-    new_padding = aes_obj.decrypt(old_padding[48:]) + dummy_padding
+
+    new_padding = ""
+    for i in range(1, config.HOP_LIMIT):
+        new_padding = aes_decrypt(old_padding[i*48:(i+1)*48], aes_key)
+    new_padding += dummy_padding
     return onion + new_padding
+
+
+def aes_encrypt(data, aes_key):
+    aes_obj = AES.new(aes_key, AES.MODE_CBC, "0" * 16)
+    return aes_obj.encrypt(data)
+
+
+def aes_decrypt(data, aes_key):
+    aes_obj = AES.new(aes_key, AES.MODE_CBC, "0" * 16)
+    return aes_obj.decrypt(data)

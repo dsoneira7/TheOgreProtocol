@@ -41,7 +41,6 @@ def main():
         aes_key = randfile.read(32)
         print "AESKEY: " + str(aes_key)
         print "AESKEY.LENGHT" + str(len(aes_key))
-        aes_obj = AES.new(aes_key, AES.MODE_CBC, "0" * 16)
         aes_msg = da_pub_key.encrypt(aes_key, 0)[0]
         succ = utils.send_message_with_length_prefix(s, aes_msg)
         if not succ:
@@ -57,7 +56,7 @@ def main():
             print "Directory authority connection failed"
             quit()
 
-        hop_data = aes_obj.decrypt(data)
+        hop_data = utils.aes_decrypt(data, aes_key)
 
         # hoplist format (ip, port, public_key)
         # Replace this with processed route and key data

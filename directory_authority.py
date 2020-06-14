@@ -83,9 +83,8 @@ def main():
             relay_list = random.sample(relay_nodes.items(),NUM_NODES-1)
             exit = random.sample(exit_nodes.items(),1)
             route_message = construct_route(relay_list,exit)
-            
-            aes_obj = AES.new(aes_key, AES.MODE_CBC, "0"*16)
-            blob = aes_obj.encrypt(utils.pad_message(route_message))
+
+            blob = utils.aes_encrypt(utils.pad_message(route_message))
             utils.send_message_with_length_prefix(clientsocket,blob)
             print colored("DA["+da_port+"]: sent a route to a client", 'green')
 
