@@ -30,7 +30,7 @@ def main():
     myip = args.node_ip #loopback only for now
     s.bind((myip, args.portno))
     global portstring
-    portstring = str(args.portno)
+    portstring = str(myip) + ":" + str(args.portno)
     s.listen(1)
     randfile = Random.new()
 
@@ -63,10 +63,10 @@ def main():
     #The while condition here dictates how long the node is up
     while True:
         clientsocket, addr = s.accept()
-        threading.Thread(target=startSession, args=(clientsocket, mykey, args.exit)).start()
+        threading.Thread(target=startSession, args=(clientsocket, mykey, args.exit, utils.packHostPort(myip, args.portno))).start()
         print colored("N[" + portstring + "]: New session started", 'cyan')
 
-def startSession(prevhop, mykey, is_exit):
+def startSession(prevhop, mykey, is_exit, my_hostport):
     # THREAD BOUNDARY
     # need this node to have its own key pair
     try:
@@ -77,13 +77,18 @@ def startSession(prevhop, mykey, is_exit):
         #kill this thread
         return
     try:
-        aeskey, hostport, nextmessage = peelRoute(routemessage, mykey)
+        aeskey, hostport, nextmessage = peelRoute(routemessage[:(len(routemessage)-144)], mykey)
+        if not comprobe_padding(nextmessage, routemessage[(len(routemessage) - 144):], mykey, aeskey):
+            print colored("N[" + portstring + "]: Onion discarded.", 'cyan')
+            return
     except ValueError:
         prevhop.shutdown(socket.SHUT_RDWR)
         return
+
+    nextmessage = utils.add_new_padding(nextmessage, routemessage[(len(routemessage) - 144):], my_hostport, aeskey)
     nexthost, nextport = utils.unpackHostPort(hostport)
     nexthop = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    print "nextHostIP:port " + str(nexthost) + ":" + str(nextport)
+    print colored("N[" + portstring + "]: nextHostIP:port " + str(nexthost) + ":" + str(nextport), 'cyan')
     nexthop.connect((nexthost, nextport))
     if nextmessage != "":
         utils.send_message_with_length_prefix(nexthop, nextmessage)
@@ -180,6 +185,13 @@ def peelRoute(message, mykey):
     nextmessage = message[8:] #if nextmessage is an empty string, I'm an exit node
     return (aeskey, hostport, nextmessage)
 
+def comprobe_padding(onion, padding, rsa_key, aes_key):
+    encrypted_signature = padding[:48]
+    signed = onion + padding[48:]
+    decrypted_signature = rsa_key.decrypt(encrypted_signature)
+    if not utils.verify(aes_key, signed, decrypted_signature):
+        return False
+    return True
 
 if __name__ == "__main__":
     main()

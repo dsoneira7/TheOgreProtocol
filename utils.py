@@ -1,5 +1,7 @@
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import AES
+from Crypto.Hash import SHA256
+from Crypto.Hash import HMAC
 from Crypto import Random
 from Crypto.Protocol.KDF import PBKDF2
 from numpy import random
@@ -142,24 +144,59 @@ def packRoute(hoplist):
 # destination is a pre-packed hostport string
 
 
-def wrap_all_messages(hoplist, destination):
+def wrap_all_messages(hoplist, message):
     #We generate the padding random blocks to respect the global length of the extended onion
     random_blocks = generate_random_blocks(config.HOP_LIMIT - len(hoplist))
     dummy_paddings = generate_dummy_paddings()
 
     randfile = Random.new()
-    wrapped_message = destination
+    wrapped_message = message
     aes_key_list = []
+    ciphered_tags = []
     packedroute = ""
     for i in range(0, len(hoplist)):
         # have some way of getting each, probably from directory authority
+        rsa_key = hoplist[i][2]
         elem_aes_key = randfile.read(32)
         aes_key_list.append(elem_aes_key)
-        if i != 0:
-            packedroute = packHostPort(hoplist[i - 1][0], hoplist[i - 1][1])
+
+
+        tag = wrapped_message
+        for j in range(0, i):
+            tag += ciphered_tags[i]
+        for random_block in random_blocks:
+            tag += random_block
+        count = 0
+        for k in range(len(hoplist) - i, -1, -1):
+            tag += dummy_paddings[k][count]
+            count += 1
+
+        hmac = HMAC.new(elem_aes_key, tag, SHA256)
+        ciphered_tag = hmac.digest()
+
+        ciphered_tags.append(rsa_key.encrypt(ciphered_tag, rsa_key.publickey())[0])
+
+        if i != len(hoplist - 1):
+            aes_obj = AES.new(elem_aes_key, AES.MODE_CBC, "0" * 16)
+            for x in range(0, len(ciphered_tags)):
+                ciphered_tags[x] = aes_obj.encrypt(ciphered_tags[x])
+            for x in range(0, len(random_blocks)):
+                random_blocks[x] = aes_obj.encrypt(random_blocks[x])
+
+
+        packedroute = packHostPort(hoplist[i][0], hoplist[i][1])
         wrapped_message = packedroute + wrapped_message
         wrapped_message = wrap_message(
-            pad_message(wrapped_message), hoplist[i][2], elem_aes_key)
+            pad_message(wrapped_message),
+            rsa_key,
+            elem_aes_key
+        )
+
+    for ciphered_tag in ciphered_tags:
+        wrapped_message += ciphered_tag
+    for random_block in random_blocks:
+        wrapped_message += random_block
+
     return wrapped_message, aes_key_list
 
 
@@ -195,7 +232,7 @@ def signal_handler(received_signal, frame):
 def generate_random_blocks(n_random_blocks):
     random_blocks = []
     for i in range(n_random_blocks):
-        random_blocks[i] = random.bytes(256)
+        random_blocks[i] = random.bytes(384)
     return random_blocks
 
 
@@ -204,17 +241,17 @@ def generate_dummy_paddings(hoplist, aes_key_list):
     padding_map = [[]]
 
     reverse_hoplist = list(reversed(hoplist))
-    reverse_aes_key_list = list(reversed)
+    reverse_aes_key_list = list(reversed(aes_key_list))
 
     aes_obj_list = []
-    for i in range (0, len(reverse_hoplist)-1):
+    for i in range(0, len(reverse_hoplist)-1):
         aes_obj_list[i] = AES.new(reverse_aes_key_list[i],AES.MODE_CBC, "0" * 16)
 
-    for i in range (0, len(reverse_hoplist)-1):
+    for i in range(0, len(reverse_hoplist)-1):
         padding_map[0][i] = PBKDF2(
             reverse_aes_key_list[i],
             packHostPort(hoplist[i][0], hoplist[i][1]),
-            256,
+            48,
             config.KDF_ITERATIONS)
 
         k = i
@@ -223,3 +260,20 @@ def generate_dummy_paddings(hoplist, aes_key_list):
             k += 1
 
     return padding_map
+
+
+def verify(aes_key, to_be_verified, signature):
+    hmac = HMAC.new(aes_key, to_be_verified, SHA256)
+    digest = hmac.digest()
+    return digest == signature
+
+
+def add_new_padding(onion, old_padding, hostport, aes_key):
+    dummy_padding = PBKDF2(
+            aes_key,
+            hostport,
+            48,
+            config.KDF_ITERATIONS)
+    aes_obj = AES.new(aes_key, AES.MODE_CBC, "0" * 16)
+    new_padding = aes_obj.decrypt(old_padding[48:]) + dummy_padding
+    return onion + new_padding
