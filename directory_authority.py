@@ -19,8 +19,6 @@ def main():
 
     relay_nodes = {}
 
-    exit_nodes = {}
-
     randfile = Random.new()
 
     #get the DA private key from a file
@@ -46,7 +44,7 @@ def main():
         
         (clientsocket, addr) = s.accept()
 
-        request_type = clientsocket.recv(1);
+        request_type = clientsocket.recv(1)
         if request_type == "":
             clientsocket.close()
             continue
@@ -61,16 +59,6 @@ def main():
             relay_nodes[node_addr] = key
             print colored("DA["+da_port+"]: registered a relay node on port " + str(utils.unpackHostPort(node_addr)[1]), 'green')
 
-        elif request_type == 'e': #exit node
-            msg = utils.recvn(clientsocket,RSA_KEY_SIZE+8)
-            if msg == "":
-                clientsocket.close()
-                continue
-            node_addr = msg[:8]
-            key = msg[8:]
-            exit_nodes[node_addr] = key
-            print colored("DA["+da_port+"]: registered an exit node on port " + str(utils.unpackHostPort(node_addr)[1]), 'green')
-
         elif request_type == 'r': #route
 
             #recieve encrypted aes key from client
@@ -79,7 +67,7 @@ def main():
                 clientsocket.close()
                 continue
             aes_key = da_mykey.decrypt(aes_enc)
-            
+            #TODO: Ter en conta que hai que cambiar o método de xeración aleatoria de rutas para non pasar polo nodo destino
             relay_list = random.sample(relay_nodes.items(),NUM_NODES-1)
             exit = random.sample(exit_nodes.items(),1)
             route_message = construct_route(relay_list,exit)
