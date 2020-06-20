@@ -69,8 +69,8 @@ def main():
             aes_key = da_mykey.decrypt(aes_enc)
             #TODO: Ter en conta que hai que cambiar o método de xeración aleatoria de rutas para non pasar polo nodo destino
             relay_list = random.sample(relay_nodes.items(),NUM_NODES-1)
-            exit = random.sample(exit_nodes.items(),1)
-            route_message = construct_route(relay_list,exit)
+            #exit = random.sample(exit_nodes.items(),1)
+            route_message = construct_route(relay_list)
 
             blob = utils.aes_encrypt(utils.pad_message(route_message))
             utils.send_message_with_length_prefix(clientsocket,blob)
@@ -79,11 +79,11 @@ def main():
         clientsocket.close()
 
 
-def construct_route(relays,exit):
+def construct_route(relays):
     message = ""
     for a,b in relays:
         message += a+b
-    message += exit[0][0]+exit[0][1]
+    #message += exit[0][0]+exit[0][1]
     return message
 
 
