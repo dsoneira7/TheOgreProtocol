@@ -209,6 +209,7 @@ def peel_all_layers(aes_key_list, response):
 
 
 def process_route(data):
+    print data
     hoplist = []
     for a in range(3):
         rsa_key = data[8:220]

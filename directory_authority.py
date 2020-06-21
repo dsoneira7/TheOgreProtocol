@@ -67,12 +67,12 @@ def main():
                 clientsocket.close()
                 continue
             aes_key = da_mykey.decrypt(aes_enc)
-            #TODO: Ter en conta que hai que cambiar o método de xeración aleatoria de rutas para non pasar polo nodo destino
+            #TODO: Ter en conta que hai que cambiar o metodo de xeracion aleatoria de rutas para non pasar polo nodo destino
             relay_list = random.sample(relay_nodes.items(),NUM_NODES-1)
             #exit = random.sample(exit_nodes.items(),1)
             route_message = construct_route(relay_list)
 
-            blob = utils.aes_encrypt(utils.pad_message(route_message))
+            blob = utils.aes_encrypt(utils.pad_message(route_message), aes_key)
             utils.send_message_with_length_prefix(clientsocket,blob)
             print colored("DA["+da_port+"]: sent a route to a client", 'green')
 

@@ -27,10 +27,14 @@ def main():
     da_pub_key = RSA.importKey(da_pub_key)
 
     while True:
+        print "Type the identifier of the destiny node[ip_address:port]:"
+        destiny = raw_input()
+        (destiny_address, destiny_port) = destiny.split(":")
         print "Type the message you want to send:"
         message = raw_input()
         if message == "":
             quit()
+
 
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect((DA_IP, int(DA_PORT)))
