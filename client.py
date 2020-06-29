@@ -13,14 +13,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("dir_auth_ip", help="the ip address of the directory authority")
     parser.add_argument("dir_auth_port", help="the port number of the directory authority")
+    #TODO: Quitar argumentos por linea de comandos sobre vella configuracion de destino
     parser.add_argument("destination_ip", help="the ip address of the destination")
     parser.add_argument("destination_port", help="the port number of the destination")
     args = parser.parse_args()
 
     DA_IP = args.dir_auth_ip
     DA_PORT = args.dir_auth_port
-    DEST_HOST = args.destination_ip
-    DEST_PORT = args.destination_port
 
     da_file = open('dir_auth_pub_key.pem', 'r')
     da_pub_key = da_file.read()
@@ -43,10 +42,13 @@ def main():
         # construct and send an aes key
         randfile = Random.new()
         aes_key = randfile.read(32)
+        print "IP: " + destiny_address + " PORT: " + destiny_port
+        print utils.packHostPort(destiny_address, int(destiny_port))
+        da_route_request = utils.packHostPort(destiny_address, int(destiny_port)) + aes_key
         print "AESKEY: " + str(aes_key)
         print "AESKEY.LENGHT" + str(len(aes_key))
-        aes_msg = da_pub_key.encrypt(aes_key, 0)[0]
-        succ = utils.send_message_with_length_prefix(s, aes_msg)
+        da_route_message = da_pub_key.encrypt(da_route_request, 0)[0]
+        succ = utils.send_message_with_length_prefix(s, da_route_message)
         if not succ:
             s.close()
             print "Directory authority connection failed"
@@ -67,7 +69,7 @@ def main():
         hoplist = utils.process_route(hop_data)
         hoplist = list(reversed(hoplist))
         # Send keys and establish link
-        run_client(hoplist, utils.packHostPort(DEST_HOST, int(DEST_PORT)), message)
+        run_client(hoplist, utils.packHostPort(destiny_address, int(destiny_port)), message)
 
 
 def run_client(hoplist, destination, message):
@@ -76,24 +78,24 @@ def run_client(hoplist, destination, message):
     next_s.connect(next_host)
     # Generate wrapped message
     wrapped_message, aes_key_list = utils.wrap_all_messages(
-        hoplist, destination)
+        hoplist, message)
 
     utils.send_message_with_length_prefix(next_s, wrapped_message)
 
-    message = utils.add_all_layers(aes_key_list, message)
-    try:
-        utils.send_message_with_length_prefix(next_s, message)
-    except socket.error, e:
-        print "client detected node closing, finished!"
-        return
-    try:
-        response = utils.recv_message_with_length_prefix(next_s)
-    except socket.error, e:
-        print "client detected node closing, finished!"
-        return
-    response = utils.peel_all_layers(aes_key_list, response)
-    print colored("CLIENT: response from server:", 'red')
-    print colored(response, 'red')
+    #message = utils.add_all_layers(aes_key_list, message)
+    #try:
+    #    utils.send_message_with_length_prefix(next_s, message)
+    #except socket.error, e:
+    #    print "client detected node closing, finished!"
+    #    return
+    #try:
+    #    response = utils.recv_message_with_length_prefix(next_s)
+    #except socket.error, e:
+    #    print "client detected node closing, finished!"
+    #    return
+    #response = utils.peel_all_layers(aes_key_list, response)
+    #print colored("CLIENT: response from server:", 'red')
+    #print colored(response, 'red')
 
 
 if __name__ == "__main__":

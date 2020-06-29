@@ -62,15 +62,24 @@ def main():
         elif request_type == 'r': #route
 
             #recieve encrypted aes key from client
-            aes_enc = utils.recv_message_with_length_prefix(clientsocket)
-            if aes_enc == "":
+            data = utils.recv_message_with_length_prefix(clientsocket)
+            if data == "":
                 clientsocket.close()
                 continue
-            aes_key = da_mykey.decrypt(aes_enc)
+            data_decrypted = da_mykey.decrypt(data)
+            print len(data_decrypted)
+            destination = data_decrypted[:8]
+            aes_key = data_decrypted[8:]
+            print "AES_KEY_DESINATION_AUTHORITY: " + str(aes_key)
+            print destination
+            for a in relay_nodes:
+                print a
+                if a == destination:
+                    exit_node = (a, relay_nodes[a])
             #TODO: Ter en conta que hai que cambiar o metodo de xeracion aleatoria de rutas para non pasar polo nodo destino
             relay_list = random.sample(relay_nodes.items(),NUM_NODES-1)
             #exit = random.sample(exit_nodes.items(),1)
-            route_message = construct_route(relay_list)
+            route_message = construct_route(relay_list, exit_node)
 
             blob = utils.aes_encrypt(utils.pad_message(route_message), aes_key)
             utils.send_message_with_length_prefix(clientsocket,blob)
@@ -79,11 +88,11 @@ def main():
         clientsocket.close()
 
 
-def construct_route(relays):
+def construct_route(relays, exit_node):
     message = ""
     for a,b in relays:
         message += a+b
-    #message += exit[0][0]+exit[0][1]
+    message += exit_node[0] + exit_node[1]
     return message
 
 

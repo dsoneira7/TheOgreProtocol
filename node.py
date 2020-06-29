@@ -8,6 +8,7 @@ import threading
 import argparse
 import signal
 import os
+import config
 from termcolor import colored
 
 portstring = ""
@@ -72,39 +73,38 @@ def startSession(prevhop, mykey, my_hostport):
         #kill this thread
         return
     try:
-        aeskey, hostport, nextmessage = peelRoute(routemessage[:(len(routemessage)-144)], mykey)
-        if not comprobe_padding(nextmessage, routemessage[(len(routemessage) - 144):], mykey, aeskey):
+        aeskey, hostport, nextmessage = peelRoute(routemessage[:(len(routemessage)-(config.HOP_LIMIT*128))], mykey)
+        print "message length: " + str(len(routemessage))
+        print "hostport: " + utils.unpackHostPort(hostport)[0] + str(utils.unpackHostPort(hostport)[1])
+        if hostport == "0" * 8:
+            this_is_destiny(nextmessage)
+            return
+        if not comprobe_padding(nextmessage, routemessage[(len(routemessage) - (config.HOP_LIMIT*128)):], mykey, aeskey):
             print colored("N[" + portstring + "]: Onion discarded.", 'cyan')
             return
     except ValueError:
         prevhop.shutdown(socket.SHUT_RDWR)
         return
 
-    if hostport == "0"*8:
-        this_is_destiny(nextmessage)
-        return
-
-    else:
-        nextmessage = utils.add_new_padding(nextmessage, routemessage[(len(routemessage) - 144):], my_hostport, aeskey)
-        nexthost, nextport = utils.unpackHostPort(hostport)
-        nexthop = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        print colored("N[" + portstring + "]: nextHostIP:port " + str(nexthost) + ":" + str(nextport), 'cyan')
-        nexthop.connect((nexthost, nextport))
-        if nextmessage != "":
-            utils.send_message_with_length_prefix(nexthop, nextmessage)
-        #spawn forwarding and backwarding threads here
-        fwd = threading.Thread(target=forwardingLoop, args=(prevhop, nexthop, aeskey))
-        bwd = threading.Thread(target=backwardingLoop, args=(prevhop, nexthop, aeskey))
-        fwd.start()
-        bwd.start()
-        fwd.join()
-        bwd.join()
-        return
+    nextmessage = utils.add_new_padding(nextmessage, routemessage[(len(routemessage) - (config.HOP_LIMIT*128)):], my_hostport, aeskey)
+    nexthost, nextport = utils.unpackHostPort(hostport)
+    nexthop = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    print colored("N[" + portstring + "]: nextHostIP:port " + str(nexthost) + ":" + str(nextport), 'cyan')
+    nexthop.connect((nexthost, nextport))
+    if nextmessage != "":
+        utils.send_message_with_length_prefix(nexthop, nextmessage)
+    #spawn forwarding and backwarding threads here
+    fwd = threading.Thread(target=forwardingLoop, args=(prevhop, nexthop, aeskey))
+    bwd = threading.Thread(target=backwardingLoop, args=(prevhop, nexthop, aeskey))
+    fwd.start()
+    bwd.start()
+    fwd.join()
+    bwd.join()
+    return
 
 
 def this_is_destiny(message):
-    message = utils.unpad_message(message)
-    print colored("N[" + portstring + "]: Anonymous message: " + message)
+    print colored("N[" + portstring + "]: Anonymous message: " + message, 'cyan')
 
 
 def forwardingLoop(prevhop, nexthop, aeskey):
@@ -170,16 +170,36 @@ def backwardingLoop(prevhop, nexthop, aeskey):
 def peelRoute(message, mykey):
     message, aeskey = utils.unwrap_message(message, mykey)
     message = utils.unpad_message(message)
+    print "message_raw: " + str(message)
     host, port = utils.unpackHostPort(message[:8])
     hostport = message[:8]
     nextmessage = message[8:] #if nextmessage is an empty string, I'm an exit node
     return (aeskey, hostport, nextmessage)
 
 def comprobe_padding(onion, padding, rsa_key, aes_key):
-    encrypted_signature = padding[:48]
-    signed = onion + padding[48:]
+    encrypted_signature = padding[:128]
+    print "ENCRYPTED_SIGNATURE_LENGTH OSTIAAA " + str(len(encrypted_signature)) + " value: " + str(encrypted_signature)
+    signed = onion + padding[128:]
+    print "ONION + PADDING LENGTH: " + str(len(signed)) + " value: " + str(signed)
+    pointer = 0
+    for a in range(0, 4):
+
+        if a == 0:
+            if len(signed) == 416:
+                pointer = 32
+            else:
+                pointer = 176
+            actual = signed[:pointer]
+            reconstruct = actual
+        else:
+            actual = signed[pointer:(pointer + 128)]
+            pointer += 128
+            reconstruct += actual
+        print "bloque numero " + str(a) + " value: " + str(actual)
+    print "reconstruido length: " + str(len(reconstruct)) + " value: " + str(reconstruct)
     decrypted_signature = rsa_key.decrypt(encrypted_signature)
-    if not utils.verify(aes_key, signed, decrypted_signature):
+    print "decrypted_signature_length" + str(len(decrypted_signature))
+    if not utils.verify(aes_key, reconstruct, decrypted_signature, rsa_key):
         return False
     return True
 
