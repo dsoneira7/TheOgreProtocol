@@ -50,8 +50,12 @@ def wrap_message(message, rsa_key, aes_key):
     # encrypt message (param 'message') with AES using 'k'
     # encrypt 'k' with RSA key (param 'key')
     # assemble final blob, then return it
-
-    ciphertext_aes = aes_encrypt(message, aes_key)
+    ciphertext_aes = aes_encrypt(message[:config.IDENTIFIER_LENGTH], aes_key)
+    pointer = 0
+    while (config.IDENTIFIER_LENGTH + (pointer*config.ONION_BLOCK_LENGTH)) != len(message):
+        start = config.IDENTIFIER_LENGTH + (pointer*config.ONION_BLOCK_LENGTH)
+        end = start + config.ONION_BLOCK_LENGTH
+        ciphertext_aes += aes_encrypt(message[start:end], aes_key)
     print "wrapping before rsa_encryption length " + str(len(aes_key)) + " value!: " + str(aes_key)
     cipher = PKCS1_OAEP.new(rsa_key.publickey())
     ciphertext_rsa = cipher.encrypt(aes_key)
@@ -68,12 +72,17 @@ def unwrap_message(blob, rsa_key):
 
     ciphertext_rsa = blob[0:128]
     ciphertext_aes = blob[128:len(blob)]
-    print str(len(blob))
+    print "LEEEEEEEEEEENGTH DEL ONION A SU LLEGADA AL RELAY: " + str(len(blob))
     print(str(len(ciphertext_rsa)))
     cipher = PKCS1_OAEP.new(rsa_key)
     aes_key = cipher.decrypt(ciphertext_rsa)
     print str(len(aes_key))
-    message = aes_decrypt(ciphertext_aes, aes_key)
+    message = aes_decrypt(ciphertext_aes[:config.IDENTIFIER_LENGTH], aes_key)
+    pointer = 0
+    while (config.IDENTIFIER_LENGTH + (pointer * config.ONION_BLOCK_LENGTH)) != len(ciphertext_aes):
+        start = config.IDENTIFIER_LENGTH + (pointer * config.ONION_BLOCK_LENGTH)
+        end = start + config.ONION_BLOCK_LENGTH
+        message += aes_decrypt(ciphertext_aes[start:end], aes_key)
     return message, aes_key
 
 # assumes 'message' is no longer than 4096 bytes
@@ -148,6 +157,14 @@ def packRoute(hoplist):
 # destination is a pre-packed hostport string
 
 
+def fixed_length_pad_message(wrapped_message):
+    print "message_length before fixed_padding: " + str(len(wrapped_message))
+    pad_size = config.DATA_BLOCK_LENGTH - (len(wrapped_message) % config.DATA_BLOCK_LENGTH)
+    if pad_size == 0:
+        pad_size = config.DATA_BLOCK_LENGTH
+    wrapped_message += chr(pad_size % 16) * pad_size
+    print "message_length after fixed_padding: " + str(len(wrapped_message))
+    return wrapped_message
 
 
 def wrap_all_messages(hoplist, message):
@@ -159,17 +176,16 @@ def wrap_all_messages(hoplist, message):
 
     #We generate the padding random blocks to respect the global length of the extended onion
     random_blocks = generate_random_blocks(config.HOP_LIMIT - len(hoplist))
-    dummy_paddings = generate_dummy_paddings(hoplist, aes_key_list)
+    dummy_paddings = generate_paddings(hoplist, aes_key_list, 128)
+
+    onion_paddings = generate_paddings(hoplist, aes_key_list, 144)
 
     reversed_aes_key_list = list(reversed(aes_key_list))
 
-    message_length = str(len(message))
-    while len(message_length) != 3:
-        message_length = "0" + message_length
-
-    wrapped_message = "0"*8 + message_length + message
+    wrapped_message = message
+    wrapped_message = fixed_length_pad_message(wrapped_message)
     ciphered_tags = []
-    packedroute = ""
+    packedroute = "0"*8
     for i in range(0, len(hoplist)):
         # have some way of getting each, probably from directory authority
         rsa_key = hoplist[i][2]
@@ -237,6 +253,15 @@ def wrap_all_messages(hoplist, message):
             rsa_key,
             reversed_aes_key_list[i]
         )
+
+        if i == 0:
+            count = len(onion_paddings[0]) - 1
+            for k in range(0, len(onion_paddings[0])):
+                wrapped_message += onion_paddings[count][k]
+                count -= 1
+        else:
+            wrapped_message = wrapped_message[:(len(wrapped_message) - config.ONION_BLOCK_LENGTH)]
+
         print "wrappes_message_length iteracion " + str(i) + " " + str(len(wrapped_message))
     counter = 0
     for ciphered_tag in list(reversed(ciphered_tags)):
@@ -298,7 +323,7 @@ def generate_random_blocks(n_random_blocks):
 
 
 #TODO: COMENTAR PARA EXPLICAR CODIGO, OU FACELO UN POUCO MAIS COMPRENSIBLE.
-def generate_dummy_paddings(hoplist, aes_key_list):
+def generate_paddings(hoplist, aes_key_list, block_size):
     reverse_hoplist = list(reversed(hoplist))
     #reverse_aes_key_list = list(reversed(aes_key_list))
 
@@ -309,7 +334,7 @@ def generate_dummy_paddings(hoplist, aes_key_list):
         padding_map[0][i] = PBKDF2(
             aes_key_list[i],
             packHostPort(reverse_hoplist[i][0], reverse_hoplist[i][1]),
-            128,
+            block_size,
             config.KDF_ITERATIONS)
         print colored(
             "padding generated with aes_key("+str(len(aes_key_list[i]))+"): " + str(aes_key_list[i]) + " and hostport: " + str(reverse_hoplist[i][0]) + ":" + str(reverse_hoplist[i][1]) + " length: " + str(
@@ -362,3 +387,11 @@ def aes_encrypt(data, aes_key):
 def aes_decrypt(data, aes_key):
     aes_obj = AES.new(aes_key, AES.MODE_CBC, "0" * 16)
     return aes_obj.decrypt(data)
+
+
+def add_new_onion_padding(nextmessage, hostport, aes_key):
+    return nextmessage + PBKDF2(
+            aes_key,
+            hostport,
+            144,
+            config.KDF_ITERATIONS)

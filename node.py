@@ -85,7 +85,7 @@ def startSession(prevhop, mykey, my_hostport):
     except ValueError:
         prevhop.shutdown(socket.SHUT_RDWR)
         return
-
+    nextmessage = utils.add_new_onion_padding(nextmessage, my_hostport, aeskey)
     nextmessage = utils.add_new_padding(nextmessage, routemessage[(len(routemessage) - (config.HOP_LIMIT*128)):], my_hostport, aeskey)
     nexthost, nextport = utils.unpackHostPort(hostport)
     nexthop = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -104,6 +104,7 @@ def startSession(prevhop, mykey, my_hostport):
 
 
 def this_is_destiny(message):
+    message = utils.unpad_message(message)
     print colored("N[" + portstring + "]: Anonymous message: " + message, 'cyan')
 
 
