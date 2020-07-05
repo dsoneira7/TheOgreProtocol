@@ -77,16 +77,19 @@ def startSession(prevhop, mykey, my_hostport):
         print "message length: " + str(len(routemessage))
         print "hostport: " + utils.unpackHostPort(hostport)[0] + str(utils.unpackHostPort(hostport)[1])
         if hostport == "0" * 8:
-            this_is_destiny(nextmessage)
+            this_is_destiny(nextmessage[:config.DATA_BLOCK_LENGTH])
             return
+        print "message before adding onion padding: " + str(len(nextmessage))
+        nextmessage = utils.add_new_onion_padding(nextmessage, my_hostport, aeskey)
+        print "message after adding onion padding: " + str(len(nextmessage))
         if not comprobe_padding(nextmessage, routemessage[(len(routemessage) - (config.HOP_LIMIT*128)):], mykey, aeskey):
             print colored("N[" + portstring + "]: Onion discarded.", 'cyan')
             return
     except ValueError:
         prevhop.shutdown(socket.SHUT_RDWR)
         return
-    nextmessage = utils.add_new_onion_padding(nextmessage, my_hostport, aeskey)
     nextmessage = utils.add_new_padding(nextmessage, routemessage[(len(routemessage) - (config.HOP_LIMIT*128)):], my_hostport, aeskey)
+    print "message after adding dummy padding: " + str(len(nextmessage))
     nexthost, nextport = utils.unpackHostPort(hostport)
     nexthop = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     print colored("N[" + portstring + "]: nextHostIP:port " + str(nexthost) + ":" + str(nextport), 'cyan')
@@ -170,12 +173,11 @@ def backwardingLoop(prevhop, nexthop, aeskey):
 
 def peelRoute(message, mykey):
     message, aeskey = utils.unwrap_message(message, mykey)
-    message = utils.unpad_message(message)
     print "message_raw: " + str(message)
-    host, port = utils.unpackHostPort(message[:8])
-    hostport = message[:8]
-    nextmessage = message[8:] #if nextmessage is an empty string, I'm an exit node
-    return (aeskey, hostport, nextmessage)
+    hostport = utils.unpad_message(message[:16])
+    nextmessage = message[16:] #if nextmessage is an empty string, I'm an exit node
+    return aeskey, hostport, nextmessage
+
 
 def comprobe_padding(onion, padding, rsa_key, aes_key):
     encrypted_signature = padding[:128]
@@ -183,24 +185,19 @@ def comprobe_padding(onion, padding, rsa_key, aes_key):
     signed = onion + padding[128:]
     print "ONION + PADDING LENGTH: " + str(len(signed)) + " value: " + str(signed)
     pointer = 0
-    for a in range(0, 4):
-
-        if a == 0:
-            if len(signed) == 416:
-                pointer = 32
-            else:
-                pointer = 176
-            actual = signed[:pointer]
-            reconstruct = actual
+    reconstruct = ""
+    while pointer < len(signed):
+        if pointer + 16 < len(signed):
+            actual = signed[pointer:(pointer + 16)]
         else:
-            actual = signed[pointer:(pointer + 128)]
-            pointer += 128
-            reconstruct += actual
-        print "bloque numero " + str(a) + " value: " + str(actual)
+            actual = signed[pointer:]
+        pointer += 16
+        reconstruct += actual
+        print "bloque numero " + str(pointer/16) + " value: " + str(actual)
     print "reconstruido length: " + str(len(reconstruct)) + " value: " + str(reconstruct)
     decrypted_signature = rsa_key.decrypt(encrypted_signature)
     print "decrypted_signature_length" + str(len(decrypted_signature))
-    if not utils.verify(aes_key, reconstruct, decrypted_signature, rsa_key):
+    if not utils.verify(aes_key, signed, decrypted_signature, rsa_key):
         return False
     return True
 

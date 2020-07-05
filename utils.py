@@ -30,7 +30,10 @@ def pad_message(message):
 
 
 def unpad_message(message):
-    return message[:-ord(message[-1])]
+    print "Lenght before unpadding message: " + str(len(message))
+    unpadded_message = message[:-ord(message[-1])]
+    print "Lenght after unpadding message: " + str(len(unpadded_message))
+    return unpadded_message
 
 
 def add_layer(message, aes_key):
@@ -50,12 +53,19 @@ def wrap_message(message, rsa_key, aes_key):
     # encrypt message (param 'message') with AES using 'k'
     # encrypt 'k' with RSA key (param 'key')
     # assemble final blob, then return it
+    # TODO: Posibilidade de incrementar un pouco a performance do cifrado facendo que non cifre a ulitma parte (unha maneira pode ser reducindo o mensaje directamente antes de introducilo)
+
     ciphertext_aes = aes_encrypt(message[:config.IDENTIFIER_LENGTH], aes_key)
     pointer = 0
+    print "wrapping before aes_encryption with key: " + str(aes_key) + "      length " + str(len(message)) + " value!: " + str(message)
     while (config.IDENTIFIER_LENGTH + (pointer*config.ONION_BLOCK_LENGTH)) != len(message):
         start = config.IDENTIFIER_LENGTH + (pointer*config.ONION_BLOCK_LENGTH)
         end = start + config.ONION_BLOCK_LENGTH
         ciphertext_aes += aes_encrypt(message[start:end], aes_key)
+        print colored("BLOQUE NUMEROOOOOOO " + str(pointer) + ": " + str(message[start:end]), 'red')
+        print colored("BLOQUE NUMEROOOOOOO " + str(pointer) + ": " + str(ciphertext_aes[start:end]), 'blue')
+        pointer += 1
+
     print "wrapping before rsa_encryption length " + str(len(aes_key)) + " value!: " + str(aes_key)
     cipher = PKCS1_OAEP.new(rsa_key.publickey())
     ciphertext_rsa = cipher.encrypt(aes_key)
@@ -76,13 +86,17 @@ def unwrap_message(blob, rsa_key):
     print(str(len(ciphertext_rsa)))
     cipher = PKCS1_OAEP.new(rsa_key)
     aes_key = cipher.decrypt(ciphertext_rsa)
-    print str(len(aes_key))
+    print str(len(aes_key)) + str(aes_key)
     message = aes_decrypt(ciphertext_aes[:config.IDENTIFIER_LENGTH], aes_key)
     pointer = 0
     while (config.IDENTIFIER_LENGTH + (pointer * config.ONION_BLOCK_LENGTH)) != len(ciphertext_aes):
         start = config.IDENTIFIER_LENGTH + (pointer * config.ONION_BLOCK_LENGTH)
         end = start + config.ONION_BLOCK_LENGTH
         message += aes_decrypt(ciphertext_aes[start:end], aes_key)
+        print colored("BLOQUE NUMEROOOOOOO " + str(pointer) + ": " + str(ciphertext_aes[start:end]), 'blue')
+        print colored("BLOQUE NUMEROOOOOOO " + str(pointer) + ": " + str(message[start:end]), 'red')
+        pointer += 1
+    print "LEEEEEEEEEEENGTH DEL ONION despues de desencriptar: " + str(len(message))
     return message, aes_key
 
 # assumes 'message' is no longer than 4096 bytes
@@ -204,7 +218,7 @@ def wrap_all_messages(hoplist, message):
 
         print "tag length on iteration " + str(i) + ": " + str(len(tag)) + " value: " + str(tag)
         reconstruct = tag
-        if i == 1:
+        """if i == 1:
             pointer = 0
             for a in range(0, 4):
                 if a == 0:
@@ -226,7 +240,7 @@ def wrap_all_messages(hoplist, message):
                     pointer+=128
                     reconstruct += actual
                 print "bloque numero " + str(a) + " value: " + str(actual)
-            print "reconstruido length: " + str(len(reconstruct)) + " value: " + str(reconstruct)
+            print "reconstruido length: " + str(len(reconstruct)) + " value: " + str(reconstruct)"""
         print "aes_key length: " + str(len(reversed_aes_key_list[i])) + " value: " + str(reversed_aes_key_list[i])
         hmac = HMAC.new(reversed_aes_key_list[i], reconstruct, SHA256)
         ciphered_tag = hmac.digest()
@@ -247,9 +261,10 @@ def wrap_all_messages(hoplist, message):
             cont+=1
         if i!=0:
             packedroute = packHostPort(hoplist[i-1][0], hoplist[i-1][1])
+        packedroute = pad_message(packedroute)
         wrapped_message = packedroute + wrapped_message
         wrapped_message = wrap_message(
-            pad_message(wrapped_message),
+            wrapped_message,
             rsa_key,
             reversed_aes_key_list[i]
         )
@@ -257,6 +272,7 @@ def wrap_all_messages(hoplist, message):
         if i == 0:
             count = len(onion_paddings[0]) - 1
             for k in range(0, len(onion_paddings[0])):
+                print "iteration " + str(k) + " adding " + str(onion_paddings[count][k])
                 wrapped_message += onion_paddings[count][k]
                 count -= 1
         else:
@@ -344,8 +360,26 @@ def generate_paddings(hoplist, aes_key_list, block_size):
         for j in range(0, i):
             print "dummy_paddings k: " + str(k)
             print "dummy_paddings j: " + str(j)
-            padding_map[k][j] = aes_decrypt(padding_map[k-1][j], aes_key_list[j])
+            #TODO: Revisar como se encrypta sucesivamente cada bloque, que creo que non esta ben de tdo
+            padding_map[k][j] = aes_decrypt(padding_map[k - 1][j], aes_key_list[i])
+
+            print colored(
+                "padding derivated with aes_key(" + str(len(aes_key_list[j])) + "): " + str(
+                    aes_key_list[j]) + " and source(" + str(len(padding_map[k-1][j])) + ":" + str(
+                    padding_map[k-1][j]) + " length: " + str(
+                    len(padding_map[k][j])) + " value:" + str(padding_map[k][j]), 'blue')
             k -= 1
+
+    #if block_size == config.ONION_BLOCK_LENGTH:
+    #    count = len(hoplist) - 1
+    #    for i in range(0, len(padding_map[0]) - 1):
+    #        padding_map[count][i] = aes_decrypt(padding_map[count - 1][i], aes_key_list[len(aes_key_list)-2])
+    #        print colored(
+    #            "padding derivated with aes_key(" + str(len(aes_key_list[len(aes_key_list)-2])) + "): " + str(
+    #                aes_key_list[len(aes_key_list)-2]) + " and source(" + str(len(padding_map[count - 1][i])) + ":" + str(
+    #                padding_map[count - 1][i]) + " length: " + str(
+    #                len(padding_map[count][i])) + " value:" + str(padding_map[count][i]), 'blue')
+    #        count -= 1
 
     return padding_map
 
@@ -370,7 +404,7 @@ def add_new_padding(onion, old_padding, hostport, aes_key):
             128,
             config.KDF_ITERATIONS)
 
-    print colored("padding generated with aes_key("+str(len(aes_key))+"): " + str(aes_key) + " and hostport: " + str(unpackHostPort(hostport)[0]) + ":" + str(unpackHostPort(hostport)[1]) + " length: " + str(len(dummy_padding)) + " value:" + str(dummy_padding),'magenta')
+    print colored("DUMMY padding generated with aes_key("+str(len(aes_key))+"): " + str(aes_key) + " and hostport: " + str(unpackHostPort(hostport)[0]) + ":" + str(unpackHostPort(hostport)[1]) + " length: " + str(len(dummy_padding)) + " value:" + str(dummy_padding),'magenta')
 
     new_padding = ""
     for i in range(1, config.HOP_LIMIT):
@@ -390,8 +424,11 @@ def aes_decrypt(data, aes_key):
 
 
 def add_new_onion_padding(nextmessage, hostport, aes_key):
-    return nextmessage + PBKDF2(
+    padding = PBKDF2(
             aes_key,
             hostport,
             144,
             config.KDF_ITERATIONS)
+    print colored("padding generated with aes_key("+str(len(aes_key))+"): " + str(aes_key) + " and hostport: " + str(unpackHostPort(hostport)[0]) + ":" + str(unpackHostPort(hostport)[1]) + " length: " + str(len(padding)) + " value:" + str(padding),'magenta')
+
+    return nextmessage + padding
