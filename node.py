@@ -14,6 +14,7 @@ from termcolor import colored
 portstring = ""
 proxy = False
 
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dbg", help="use public.pem and private.pem", action="store_true")
@@ -27,12 +28,14 @@ def main():
     proxy = args.proxy
     # Set up listening server
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    myip = args.node_ip #loopback only for now
+    myip = args.node_ip  # loopback only for now
     s.bind((myip, args.portno))
     global portstring
     portstring = str(myip) + ":" + str(args.portno)
     s.listen(1)
     randfile = Random.new()
+
+    print colored("N[" + portstring + "]: Node initialized...", 'cyan')
 
     # Generate RSA keys, register self with directory authority
     mykey = RSA.generate(1024)
@@ -46,20 +49,26 @@ def main():
         dir_auth.connect((args.dir_auth_ip, args.dir_auth_port))
         result = dir_auth.send("n")
         if result == 0:
-            print colored("N[" + portstring + "]: The directory authority went offline during registration! Terminating relay process...", 'cyan')
+            print colored(
+                "N[" + portstring + "]: The directory authority went offline during registration! Terminating relay process...",
+                'cyan')
             sys.exit(1)
-        msg = utils.packHostPort(myip,args.portno) + mykey.exportKey(format = "OpenSSH", passphrase=None, pkcs = 1)
+        msg = utils.packHostPort(myip, args.portno) + mykey.exportKey(format="OpenSSH", passphrase=None, pkcs=1)
         result = utils.sendn(dir_auth, msg)
         # print result
         if result == 0:
-            print colored("N[" + portstring + "]: The directory authority went offline during registration! Terminating relay process...", 'cyan')
+            print colored(
+                "N[" + portstring + "]: The directory authority went offline during registration! Terminating relay process...",
+                'cyan')
         dir_auth.close()
 
-    #The while condition here dictates how long the node is up
+    print colored("N[" + portstring + "]: Node has successfully been registered.", 'cyan')
+
+    # The while condition here dictates how long the node is up
     while True:
         clientsocket, addr = s.accept()
         threading.Thread(target=startSession, args=(clientsocket, mykey, utils.packHostPort(myip, args.portno))).start()
-        print colored("N[" + portstring + "]: New session started", 'cyan')
+        print colored("N[" + portstring + "]: New session started.", 'cyan')
 
 
 def startSession(prevhop, mykey, my_hostport):
@@ -70,33 +79,36 @@ def startSession(prevhop, mykey, my_hostport):
     except socket.error, e:
         routemessage = ""
     if routemessage == "":
-        #kill this thread
+        # kill this thread
         return
     try:
-        aeskey, hostport, nextmessage = peelRoute(routemessage[:(len(routemessage)-(config.HOP_LIMIT*128))], mykey)
-        print "message length: " + str(len(routemessage))
-        print "hostport: " + utils.unpackHostPort(hostport)[0] + str(utils.unpackHostPort(hostport)[1])
+        print colored("N[" + portstring + "]: Received new onion: " + str(routemessage), 'cyan')
+        aeskey, hostport, nextmessage = peelRoute(routemessage[:(len(routemessage) - (config.HOP_LIMIT * 128))], mykey)
+        print colored("N[" + portstring + "]: Next relay's address: " + utils.unpackHostPort(hostport)[0] + ":"
+                      + str(utils.unpackHostPort(hostport)[1]), 'cyan')
         if hostport == "0" * 8:
             this_is_destiny(nextmessage[:config.DATA_BLOCK_LENGTH])
             return
-        print "message before adding onion padding: " + str(len(nextmessage))
+        print colored("N[" + portstring + "]: Adding padding to the decrypted onion: " + str(routemessage), 'cyan')
         nextmessage = utils.add_new_onion_padding(nextmessage, my_hostport, aeskey)
-        print "message after adding onion padding: " + str(len(nextmessage))
-        if not comprobe_padding(nextmessage, routemessage[(len(routemessage) - (config.HOP_LIMIT*128)):], mykey, aeskey):
+        if not comprobe_padding(nextmessage, routemessage[(len(routemessage) - (config.HOP_LIMIT * 128)):], mykey,
+                                aeskey):
             print colored("N[" + portstring + "]: Onion discarded.", 'cyan')
             return
+
+        print colored("N[" + portstring + "]: The onion is honest. Proceeding to process the extension.", 'cyan')
+
     except ValueError:
         prevhop.shutdown(socket.SHUT_RDWR)
         return
-    nextmessage = utils.add_new_padding(nextmessage, routemessage[(len(routemessage) - (config.HOP_LIMIT*128)):], my_hostport, aeskey)
-    print "message after adding dummy padding: " + str(len(nextmessage))
+    nextmessage = utils.add_new_padding(nextmessage, routemessage[(len(routemessage) - (config.HOP_LIMIT * 128)):],
+                                        my_hostport, aeskey)
     nexthost, nextport = utils.unpackHostPort(hostport)
     nexthop = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    print colored("N[" + portstring + "]: nextHostIP:port " + str(nexthost) + ":" + str(nextport), 'cyan')
     nexthop.connect((nexthost, nextport))
     if nextmessage != "":
         utils.send_message_with_length_prefix(nexthop, nextmessage)
-    #spawn forwarding and backwarding threads here
+    # spawn forwarding and backwarding threads here
     fwd = threading.Thread(target=forwardingLoop, args=(prevhop, nexthop, aeskey))
     bwd = threading.Thread(target=backwardingLoop, args=(prevhop, nexthop, aeskey))
     fwd.start()
@@ -107,7 +119,8 @@ def startSession(prevhop, mykey, my_hostport):
 
 
 def this_is_destiny(message):
-    message = utils.unpad_message(message)
+    message_length = int(message[:3])
+    message = message[3, 3 + message_length]
     print colored("N[" + portstring + "]: Anonymous message: " + message, 'cyan')
 
 
@@ -118,7 +131,7 @@ def forwardingLoop(prevhop, nexthop, aeskey):
         except socket.error, e:
             message = ""
         if message == "":
-            #closing sockets may screw with other threads that use them
+            # closing sockets may screw with other threads that use them
             try:
                 prevhop.shutdown(socket.SHUT_RDWR)
                 nexthop.shutdown(socket.SHUT_RDWR)
@@ -140,6 +153,7 @@ def forwardingLoop(prevhop, nexthop, aeskey):
                 pass
             return
 
+
 def backwardingLoop(prevhop, nexthop, aeskey):
     while True:
         message = ""
@@ -149,7 +163,7 @@ def backwardingLoop(prevhop, nexthop, aeskey):
         except socket.error, e:
             message = ""
         if message == "":
-            #closing sockets may screw with other threads that use them
+            # closing sockets may screw with other threads that use them
             try:
                 prevhop.shutdown(socket.SHUT_RDWR)
                 nexthop.shutdown(socket.SHUT_RDWR)
@@ -171,35 +185,42 @@ def backwardingLoop(prevhop, nexthop, aeskey):
                 pass
             return
 
+
 def peelRoute(message, mykey):
     message, aeskey = utils.unwrap_message(message, mykey)
-    print "message_raw: " + str(message)
+
+    print colored("N[" + portstring + "]: Unwrapping the received onion to extract AES key and next node's address",
+                  'cyan')
+
     hostport = utils.unpad_message(message[:16])
-    nextmessage = message[16:] #if nextmessage is an empty string, I'm an exit node
+    nextmessage = message[16:]  # if nextmessage is an empty string, I'm an exit node
     return aeskey, hostport, nextmessage
 
 
 def comprobe_padding(onion, padding, rsa_key, aes_key):
+    print colored("N[" + portstring + "]: Proceeding to verify the integrity tag... ", 'cyan')
     encrypted_signature = padding[:128]
-    print "ENCRYPTED_SIGNATURE_LENGTH OSTIAAA " + str(len(encrypted_signature)) + " value: " + str(encrypted_signature)
     signed = onion + padding[128:]
-    print "ONION + PADDING LENGTH: " + str(len(signed)) + " value: " + str(signed)
     pointer = 0
+
+    """For some reason, sometimes when transmitting a large message, the received onion in some of the nodes is not 
+    equal to the one that was generated in the client. We don't know why this happens, but we discovered that if we
+    dissassemble and reassemble the onion, the problem apparently disappears. So that is what the next while block 
+    does"""
+
     reconstruct = ""
     while pointer < len(signed):
-        if pointer + 16 < len(signed):
-            actual = signed[pointer:(pointer + 16)]
+        if pointer + 128 < len(signed):
+            actual = signed[pointer:(pointer + 128)]
         else:
             actual = signed[pointer:]
-        pointer += 16
+        pointer += 128
         reconstruct += actual
-        print "bloque numero " + str(pointer/16) + " value: " + str(actual)
-    print "reconstruido length: " + str(len(reconstruct)) + " value: " + str(reconstruct)
     decrypted_signature = rsa_key.decrypt(encrypted_signature)
-    print "decrypted_signature_length" + str(len(decrypted_signature))
-    if not utils.verify(aes_key, signed, decrypted_signature, rsa_key):
+    if not utils.verify(aes_key, signed, decrypted_signature):
         return False
     return True
+
 
 if __name__ == "__main__":
     main()
