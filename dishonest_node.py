@@ -7,10 +7,15 @@ import threading
 import argparse
 import os
 import config
+import random
 from termcolor import colored
 
 portstring = ""
 proxy = False
+
+"""This file's code is the same as node.py. It declares a node to be part of the onion network. The only difference
+is that this node imitates an adversary-controlled node and introduces some false information. For testing
+purposes."""
 
 
 def main():
@@ -31,9 +36,8 @@ def main():
     global portstring
     portstring = str(myip) + ":" + str(args.portno)
     s.listen(1)
-    randfile = Random.new()
 
-    print colored("N[" + portstring + "]: Node initialized...", 'cyan')
+    print colored("N[" + portstring + "]: Node initialized...", 'red')
 
     # Generate RSA keys, register self with directory authority
     mykey = RSA.generate(1024)
@@ -49,7 +53,7 @@ def main():
         if result == 0:
             print colored(
                 "N[" + portstring + "]: The directory authority went offline during registration! Terminating relay process...",
-                'cyan')
+                'red')
             sys.exit(1)
         msg = utils.packHostPort(myip, args.portno) + mykey.exportKey(format="OpenSSH", passphrase=None, pkcs=1)
         result = utils.sendn(dir_auth, msg)
@@ -57,21 +61,24 @@ def main():
         if result == 0:
             print colored(
                 "N[" + portstring + "]: The directory authority went offline during registration! Terminating relay process...",
-                'cyan')
+                'red')
         dir_auth.close()
 
-    print colored("N[" + portstring + "]: Node has successfully been registered.", 'cyan')
+    print colored("N[" + portstring + "]: Node has successfully been registered.", 'red')
 
     # The while condition here dictates how long the node is up
     while True:
         clientsocket, addr = s.accept()
         threading.Thread(target=startSession, args=(clientsocket, mykey, utils.packHostPort(myip, args.portno))).start()
-        print colored("N[" + portstring + "]: New session started.", 'cyan')
+        print colored("N[" + portstring + "]: New session started.", 'red')
 
 
 def startSession(prevhop, mykey, my_hostport):
     # THREAD BOUNDARY
     # need this node to have its own key pair
+
+    randfile = Random.new()
+
     try:
         routemessage = utils.recv_message_with_length_prefix(prevhop)
     except socket.error, e:
@@ -80,28 +87,32 @@ def startSession(prevhop, mykey, my_hostport):
         # kill this thread
         return
     try:
-        print colored("N[" + portstring + "]: Received new onion: " + str(routemessage), 'cyan')
+        print colored("N[" + portstring + "]: Received new onion: " + str(routemessage), 'red')
         aeskey, hostport, nextmessage = peelRoute(routemessage[:(len(routemessage) - (config.HOP_LIMIT * 128))], mykey)
         if hostport == "0" * 8:
             this_is_destiny(nextmessage[:config.DATA_BLOCK_LENGTH])
             return
 
         print colored("N[" + portstring + "]: Next relay's address: " + utils.unpackHostPort(hostport)[0] + ":"
-                      + str(utils.unpackHostPort(hostport)[1]), 'cyan')
-        print colored("N[" + portstring + "]: Adding padding to the decrypted onion.", 'cyan')
+                      + str(utils.unpackHostPort(hostport)[1]), 'red')
+        print colored("N[" + portstring + "]: Adding padding to the decrypted onion.", 'red')
         nextmessage = utils.add_new_onion_padding(nextmessage, my_hostport, aeskey)
         if not comprobe_padding(nextmessage, routemessage[(len(routemessage) - (config.HOP_LIMIT * 128)):], mykey,
                                 aeskey):
-            print colored("N[" + portstring + "]: Onion discarded.", 'cyan')
+            print colored("N[" + portstring + "]: Onion discarded.", 'red')
             return
 
-        print colored("N[" + portstring + "]: The onion is honest. Proceeding to process the extension.", 'cyan')
+        print colored("N[" + portstring + "]: The onion is honest. Proceeding to process the extension.", 'red')
 
     except ValueError:
         prevhop.shutdown(socket.SHUT_RDWR)
         return
     nextmessage = utils.add_new_padding(nextmessage, routemessage[(len(routemessage) - (config.HOP_LIMIT * 128)):],
                                         my_hostport, aeskey)
+
+    # Introducing wrong information on purpose:
+    nextmessage[random.randint(0, len(nextmessage))] = randfile.read(1)
+
     nexthost, nextport = utils.unpackHostPort(hostport)
     nexthop = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     nexthop.connect((nexthost, nextport))
@@ -120,7 +131,7 @@ def startSession(prevhop, mykey, my_hostport):
 def this_is_destiny(message):
     message_length = int(message[:3])
     message = message[3:3 + message_length]
-    print colored("N[" + portstring + "]: Anonymous message: " + message, 'cyan')
+    print colored("N[" + portstring + "]: Anonymous message: " + message, 'red')
 
 
 def forwardingLoop(prevhop, nexthop, aeskey):
@@ -140,11 +151,11 @@ def forwardingLoop(prevhop, nexthop, aeskey):
         message = utils.peel_layer(message, aeskey)
         try:
             bytessent = utils.send_message_with_length_prefix(nexthop, message)
-            print colored("N[" + portstring + "]: Hopped forwards", 'cyan')
+            print colored("N[" + portstring + "]: Hopped forwards", 'red')
         except socket.error, e:
             pass
         if bytessent == 0:
-            print colored("N[" + portstring + "]: process " + str(os.getpid()) + " closing forwardingLoop", 'cyan')
+            print colored("N[" + portstring + "]: process " + str(os.getpid()) + " closing forwardingLoop", 'red')
             try:
                 prevhop.shutdown(socket.SHUT_RDWR)
                 nexthop.shutdown(socket.SHUT_RDWR)
@@ -173,7 +184,7 @@ def backwardingLoop(prevhop, nexthop, aeskey):
         bytessent = 0
         try:
             bytessent = utils.send_message_with_length_prefix(prevhop, message)
-            print colored("N[" + portstring + "]: Hopped backwards", 'cyan')
+            print colored("N[" + portstring + "]: Hopped backwards", 'red')
         except socket.error, e:
             pass
         if bytessent == 0:
@@ -189,7 +200,7 @@ def peelRoute(message, mykey):
     message, aeskey = utils.unwrap_message(message, mykey)
 
     print colored("N[" + portstring + "]: Unwrapping the received onion to extract AES key and next node's address",
-                  'cyan')
+                  'red')
 
     hostport = utils.unpad_message(message[:16])
     nextmessage = message[16:]  # if nextmessage is an empty string, I'm an exit node
@@ -197,7 +208,7 @@ def peelRoute(message, mykey):
 
 
 def comprobe_padding(onion, padding, rsa_key, aes_key):
-    print colored("N[" + portstring + "]: Proceeding to verify the integrity tag... ", 'cyan')
+    print colored("N[" + portstring + "]: Proceeding to verify the integrity tag... ", 'red')
     encrypted_signature = padding[:128]
     signed = onion + padding[128:]
     pointer = 0
