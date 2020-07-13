@@ -51,20 +51,14 @@ def wrap_message(message, rsa_key, aes_key):
 
     ciphertext_aes = aes_encrypt(message[:config.IDENTIFIER_LENGTH], aes_key)
     pointer = 0
-    print "wrapping before aes_encryption with key: " + str(aes_key) + "      length " + str(len(message)) \
-          + " value!: " + str(message)
     while (config.IDENTIFIER_LENGTH + (pointer*config.ONION_BLOCK_LENGTH)) != len(message):
         start = config.IDENTIFIER_LENGTH + (pointer*config.ONION_BLOCK_LENGTH)
         end = start + config.ONION_BLOCK_LENGTH
         ciphertext_aes += aes_encrypt(message[start:end], aes_key)
-        print colored("BLOQUE NUMEROOOOOOO " + str(pointer) + ": " + str(message[start:end]), 'red')
-        print colored("BLOQUE NUMEROOOOOOO " + str(pointer) + ": " + str(ciphertext_aes[start:end]), 'blue')
         pointer += 1
 
-    print "wrapping before rsa_encryption length " + str(len(aes_key)) + " value!: " + str(aes_key)
     cipher = PKCS1_OAEP.new(rsa_key.publickey())
     ciphertext_rsa = cipher.encrypt(aes_key)
-    print "wrapping after rsa_encryption length " + str(len(ciphertext_rsa)) + " value!: " + str(ciphertext_rsa)
     blob = ciphertext_rsa + ciphertext_aes
     return blob
 
@@ -77,21 +71,15 @@ def unwrap_message(blob, rsa_key):
 
     ciphertext_rsa = blob[0:128]
     ciphertext_aes = blob[128:len(blob)]
-    print "LEEEEEEEEEEENGTH DEL ONION A SU LLEGADA AL RELAY: " + str(len(blob))
-    print(str(len(ciphertext_rsa)))
     cipher = PKCS1_OAEP.new(rsa_key)
     aes_key = cipher.decrypt(ciphertext_rsa)
-    print str(len(aes_key)) + str(aes_key)
     message = aes_decrypt(ciphertext_aes[:config.IDENTIFIER_LENGTH], aes_key)
     pointer = 0
     while (config.IDENTIFIER_LENGTH + (pointer * config.ONION_BLOCK_LENGTH)) != len(ciphertext_aes):
         start = config.IDENTIFIER_LENGTH + (pointer * config.ONION_BLOCK_LENGTH)
         end = start + config.ONION_BLOCK_LENGTH
         message += aes_decrypt(ciphertext_aes[start:end], aes_key)
-        print colored("BLOQUE NUMEROOOOOOO " + str(pointer) + ": " + str(ciphertext_aes[start:end]), 'blue')
-        print colored("BLOQUE NUMEROOOOOOO " + str(pointer) + ": " + str(message[start:end]), 'red')
         pointer += 1
-    print "LEEEEEEEEEEENGTH DEL ONION despues de desencriptar: " + str(len(message))
     return message, aes_key
 
 # assumes 'message' is no longer than 4096 bytes
@@ -196,8 +184,8 @@ def wrap_all_messages(hoplist, message):
     reversed_aes_key_list = list(reversed(aes_key_list))
 
     message_length = str(len(message))
-    while message_length < 3:
-        message_length = "" + message_length
+
+    message_length = ("0"*(3-len(message_length))) + message_length
 
     wrapped_message = message_length + message
     wrapped_message = fixed_length_pad_message(wrapped_message)
@@ -211,7 +199,7 @@ def wrap_all_messages(hoplist, message):
             for ciphered_tag in list(reversed(ciphered_tags)):
                 tag += ciphered_tag
             for random_block in random_blocks:
-                tag += random_block
+                tag += str(random_block)
             count = 0
             for k in range(len(hoplist) - (i+2), -1, -1):
                 tag += dummy_paddings[k][count]
@@ -223,10 +211,11 @@ def wrap_all_messages(hoplist, message):
             print colored("Generated integrity block for P" + str(len(hoplist) - i) + ": " + str(ciphered_tags[i-1]),
                           'yellow')
 
-            for x in range(0, len(ciphered_tags)):
-                ciphered_tags[x] = aes_encrypt(ciphered_tags[x], reversed_aes_key_list[i])
-            for x in range(0, len(random_blocks)):
-                random_blocks[x] = aes_encrypt(random_blocks[x], reversed_aes_key_list[i])
+            if i != (len(hoplist) - 1):
+                for x in range(0, len(ciphered_tags)):
+                    ciphered_tags[x] = aes_encrypt(ciphered_tags[x], reversed_aes_key_list[i+1])
+                for x in range(0, len(random_blocks)):
+                    random_blocks[x] = aes_encrypt(random_blocks[x], reversed_aes_key_list[i+1])
 
         print colored("Adding encryption layer number " + str(i+1) + " for P" + str(len(hoplist)-i) + ".", 'yellow')
 
@@ -243,7 +232,7 @@ def wrap_all_messages(hoplist, message):
         if i == 0:
             count = len(onion_paddings[0]) - 1
             for k in range(0, config.HOP_LIMIT - (len(hoplist) - 1)):
-                wrapped_message += random.bytes(144)
+                wrapped_message += random.bytes(config.ONION_BLOCK_LENGTH)
             for k in range(0, len(onion_paddings[0])):
                 wrapped_message += onion_paddings[count][k]
                 count -= 1
@@ -286,7 +275,6 @@ def peel_all_layers(aes_key_list, response):
 
 
 def process_route(data):
-    print data
     hoplist = []
     for a in range(3):
         rsa_key = data[8:220]
@@ -305,7 +293,7 @@ def generate_random_blocks(n_random_blocks):
     print colored("Generating " + str(n_random_blocks) + " random blocks.", 'yellow')
     random_blocks = []
     for i in range(n_random_blocks):
-        random_blocks[i] = random.bytes(128)
+        random_blocks.append(random.bytes(128))
         print colored("Generated block number " + str(i+1) + ": " + str(random_blocks[i]), 'yellow')
     return random_blocks
 
@@ -322,7 +310,7 @@ def generate_paddings(hoplist, aes_key_list, block_size):
             block_size,
             config.KDF_ITERATIONS)
         print colored(
-            "padding generated with k" + str(i+1) + "identifier: " + str(reverse_hoplist[i][0]) + ":"
+            "padding generated with k" + str(i+1) + " and identifier: " + str(reverse_hoplist[i][0]) + ":"
             + str(reverse_hoplist[i][1]) + ": " + str(padding_map[0][i]), 'yellow')
 
         k = i

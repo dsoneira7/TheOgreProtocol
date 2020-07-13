@@ -84,12 +84,13 @@ def startSession(prevhop, mykey, my_hostport):
     try:
         print colored("N[" + portstring + "]: Received new onion: " + str(routemessage), 'cyan')
         aeskey, hostport, nextmessage = peelRoute(routemessage[:(len(routemessage) - (config.HOP_LIMIT * 128))], mykey)
-        print colored("N[" + portstring + "]: Next relay's address: " + utils.unpackHostPort(hostport)[0] + ":"
-                      + str(utils.unpackHostPort(hostport)[1]), 'cyan')
         if hostport == "0" * 8:
             this_is_destiny(nextmessage[:config.DATA_BLOCK_LENGTH])
             return
-        print colored("N[" + portstring + "]: Adding padding to the decrypted onion: " + str(routemessage), 'cyan')
+
+        print colored("N[" + portstring + "]: Next relay's address: " + utils.unpackHostPort(hostport)[0] + ":"
+                      + str(utils.unpackHostPort(hostport)[1]), 'cyan')
+        print colored("N[" + portstring + "]: Adding padding to the decrypted onion.", 'cyan')
         nextmessage = utils.add_new_onion_padding(nextmessage, my_hostport, aeskey)
         if not comprobe_padding(nextmessage, routemessage[(len(routemessage) - (config.HOP_LIMIT * 128)):], mykey,
                                 aeskey):
@@ -120,7 +121,7 @@ def startSession(prevhop, mykey, my_hostport):
 
 def this_is_destiny(message):
     message_length = int(message[:3])
-    message = message[3, 3 + message_length]
+    message = message[3:3 + message_length]
     print colored("N[" + portstring + "]: Anonymous message: " + message, 'cyan')
 
 
@@ -201,6 +202,7 @@ def comprobe_padding(onion, padding, rsa_key, aes_key):
     print colored("N[" + portstring + "]: Proceeding to verify the integrity tag... ", 'cyan')
     encrypted_signature = padding[:128]
     signed = onion + padding[128:]
+    print str(padding[128:])
     pointer = 0
 
     """For some reason, sometimes when transmitting a large message, the received onion in some of the nodes is not 
@@ -210,11 +212,11 @@ def comprobe_padding(onion, padding, rsa_key, aes_key):
 
     reconstruct = ""
     while pointer < len(signed):
-        if pointer + 128 < len(signed):
-            actual = signed[pointer:(pointer + 128)]
+        if pointer + 16 < len(signed):
+            actual = signed[pointer:(pointer + 16)]
         else:
             actual = signed[pointer:]
-        pointer += 128
+        pointer += 16
         reconstruct += actual
     decrypted_signature = rsa_key.decrypt(encrypted_signature)
     if not utils.verify(aes_key, signed, decrypted_signature):
