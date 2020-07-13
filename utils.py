@@ -4,7 +4,6 @@ from Crypto.Hash import SHA256
 from Crypto.Hash import HMAC
 from Crypto import Random
 from Crypto.Protocol.KDF import PBKDF2
-from numpy import random
 from termcolor import colored
 import config
 import struct
@@ -155,10 +154,11 @@ def packRoute(hoplist):
 
 
 def fixed_length_pad_message(wrapped_message):
+    randfile = Random.new()
     pad_size = config.DATA_BLOCK_LENGTH - (len(wrapped_message) % config.DATA_BLOCK_LENGTH)
     if pad_size == 0:
         pad_size = config.DATA_BLOCK_LENGTH
-    wrapped_message += random.bytes(pad_size)
+    wrapped_message += randfile.read(pad_size)
     return wrapped_message
 
 
@@ -232,7 +232,7 @@ def wrap_all_messages(hoplist, message):
         if i == 0:
             count = len(onion_paddings[0]) - 1
             for k in range(0, config.HOP_LIMIT - (len(hoplist) - 1)):
-                wrapped_message += random.bytes(config.ONION_BLOCK_LENGTH)
+                wrapped_message += randfile.read(config.ONION_BLOCK_LENGTH)
             for k in range(0, len(onion_paddings[0])):
                 wrapped_message += onion_paddings[count][k]
                 count -= 1
@@ -290,10 +290,11 @@ def signal_handler():
 
 
 def generate_random_blocks(n_random_blocks):
+    randfile = Random.new()
     print colored("Generating " + str(n_random_blocks) + " random blocks.", 'yellow')
     random_blocks = []
     for i in range(n_random_blocks):
-        random_blocks.append(random.bytes(128))
+        random_blocks.append(randfile.read(128))
         print colored("Generated block number " + str(i+1) + ": " + str(random_blocks[i]), 'yellow')
     return random_blocks
 

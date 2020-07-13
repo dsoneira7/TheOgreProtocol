@@ -1,12 +1,10 @@
 from Crypto.PublicKey import RSA
-from Crypto.Cipher import AES
 from Crypto import Random
 import socket
 import utils
 import sys
 import threading
 import argparse
-import signal
 import os
 import config
 from termcolor import colored
