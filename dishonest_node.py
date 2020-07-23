@@ -111,7 +111,9 @@ def startSession(prevhop, mykey, my_hostport):
                                         my_hostport, aeskey)
 
     # Introducing wrong information on purpose:
-    nextmessage[random.randint(0, len(nextmessage))] = randfile.read(1)
+    character_to_be_replaced_index = random.randint(0, len(nextmessage))
+    nextmessage = nextmessage[:character_to_be_replaced_index] + randfile.read(1) \
+                  + nextmessage[(character_to_be_replaced_index + 1):]
 
     nexthost, nextport = utils.unpackHostPort(hostport)
     nexthop = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

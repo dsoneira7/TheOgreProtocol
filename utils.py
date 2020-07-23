@@ -68,6 +68,7 @@ def unwrap_message(blob, rsa_key):
     # decrypt data using the AES key
     # return the unencrypted orignal blob
 
+    print "ARRIVED ONION LENGTH " + str(len(blob))
     ciphertext_rsa = blob[0:128]
     ciphertext_aes = blob[128:len(blob)]
     cipher = PKCS1_OAEP.new(rsa_key)
@@ -173,7 +174,7 @@ def wrap_all_messages(hoplist, message):
         print colored("k" + str(i+1) + ": " + str(aes_key_list[i]), 'yellow')
 
     # We generate the padding random blocks to respect the global length of the extended onion
-    random_blocks = generate_random_blocks(config.HOP_LIMIT - (len(hoplist) - 1))
+    random_blocks = generate_random_blocks(config.HOP_LIMIT - len(hoplist))
 
     print colored("Generating pseudorandom padding blocks for the onions: ", 'yellow')
     onion_paddings = generate_paddings(hoplist, aes_key_list, 144)
@@ -194,28 +195,27 @@ def wrap_all_messages(hoplist, message):
     for i in range(0, len(hoplist)):
         rsa_key = hoplist[i][2]
 
-        if i != 0:
-            tag = wrapped_message
-            for ciphered_tag in list(reversed(ciphered_tags)):
-                tag += ciphered_tag
-            for random_block in random_blocks:
-                tag += str(random_block)
-            count = 0
-            for k in range(len(hoplist) - (i+2), -1, -1):
-                tag += dummy_paddings[k][count]
-                count += 1
+        tag = wrapped_message
+        for ciphered_tag in list(reversed(ciphered_tags)):
+            tag += ciphered_tag
+        for random_block in random_blocks:
+            tag += str(random_block)
+        count = 0
+        for k in range(len(hoplist) - (i+2), -1, -1):
+            tag += dummy_paddings[k][count]
+            count += 1
 
-            hmac = HMAC.new(reversed_aes_key_list[i], tag, SHA256)
-            ciphered_tag = hmac.digest()
-            ciphered_tags.append(rsa_key.encrypt(ciphered_tag, rsa_key.publickey())[0])
-            print colored("Generated integrity block for P" + str(len(hoplist) - i) + ": " + str(ciphered_tags[i-1]),
-                          'yellow')
+        hmac = HMAC.new(reversed_aes_key_list[i], tag, SHA256)
+        ciphered_tag = hmac.digest()
+        ciphered_tags.append(rsa_key.encrypt(ciphered_tag, rsa_key.publickey())[0])
+        print colored("Generated integrity block for P" + str(len(hoplist) - i) + ": " + str(ciphered_tags[i-1]),
+                      'yellow')
 
-            if i != (len(hoplist) - 1):
-                for x in range(0, len(ciphered_tags)):
-                    ciphered_tags[x] = aes_encrypt(ciphered_tags[x], reversed_aes_key_list[i+1])
-                for x in range(0, len(random_blocks)):
-                    random_blocks[x] = aes_encrypt(random_blocks[x], reversed_aes_key_list[i+1])
+        if i != (len(hoplist) - 1):
+            for x in range(0, len(ciphered_tags)):
+                ciphered_tags[x] = aes_encrypt(ciphered_tags[x], reversed_aes_key_list[i+1])
+            for x in range(0, len(random_blocks)):
+                random_blocks[x] = aes_encrypt(random_blocks[x], reversed_aes_key_list[i+1])
 
         print colored("Adding encryption layer number " + str(i+1) + " for P" + str(len(hoplist)-i) + ".", 'yellow')
 
@@ -231,7 +231,7 @@ def wrap_all_messages(hoplist, message):
 
         if i == 0:
             count = len(onion_paddings[0]) - 1
-            for k in range(0, config.HOP_LIMIT - (len(hoplist) - 1)):
+            for k in range(0, config.HOP_LIMIT - len(hoplist)):
                 wrapped_message += randfile.read(config.ONION_BLOCK_LENGTH)
             for k in range(0, len(onion_paddings[0])):
                 wrapped_message += onion_paddings[count][k]

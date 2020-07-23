@@ -82,7 +82,14 @@ def startSession(prevhop, mykey, my_hostport):
     try:
         print colored("N[" + portstring + "]: Received new onion: " + str(routemessage), 'cyan')
         aeskey, hostport, nextmessage = peelRoute(routemessage[:(len(routemessage) - (config.HOP_LIMIT * 128))], mykey)
+
         if hostport == "0" * 8:
+            print colored("N[" + portstring + "]: Received an anonymous message. Proceeding to verify its integrity...", 'cyan')
+            if not comprobe_padding(nextmessage[:config.DATA_BLOCK_LENGTH], routemessage[(len(routemessage) - (config.HOP_LIMIT * 128)):], mykey,
+                                    aeskey):
+                print colored("N[" + portstring + "]: Message dishonest. Discarded.", 'cyan')
+                return
+
             this_is_destiny(nextmessage[:config.DATA_BLOCK_LENGTH])
             return
 
