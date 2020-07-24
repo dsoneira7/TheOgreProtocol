@@ -83,7 +83,7 @@ def main():
                 while clean_route:
                     clean_route = False
                     relay_list = random.sample(relay_nodes.items(), config.NUM_NODES)
-                    for a in relay_nodes:
+                    for a in relay_list:
                         if a == destination:
                             clean_route = True
             else:
