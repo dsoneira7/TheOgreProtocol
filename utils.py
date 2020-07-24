@@ -68,7 +68,6 @@ def unwrap_message(blob, rsa_key):
     # decrypt data using the AES key
     # return the unencrypted orignal blob
 
-    print "ARRIVED ONION LENGTH " + str(len(blob))
     ciphertext_rsa = blob[0:128]
     ciphertext_aes = blob[128:len(blob)]
     cipher = PKCS1_OAEP.new(rsa_key)

@@ -71,15 +71,23 @@ def main():
                 clientsocket.close()
                 continue
             data_decrypted = da_mykey.decrypt(data)
-            print len(data_decrypted)
             destination = data_decrypted[:8]
             aes_key = data_decrypted[8:]
             print destination
             for a in relay_nodes:
-                print a
                 if a == destination:
                     exit_node = (a, relay_nodes[a])
-            relay_list = random.sample(relay_nodes.items(), config.NUM_NODES)
+
+            clean_route = True
+            if len(relay_nodes) > config.NUM_NODES:
+                while clean_route:
+                    clean_route = False
+                    relay_list = random.sample(relay_nodes.items(), config.NUM_NODES)
+                    for a in relay_nodes:
+                        if a == destination:
+                            clean_route = True
+            else:
+                relay_list = random.sample(relay_nodes.items(), config.NUM_NODES)
 
             # Uncomment if we want random length routes
             # relay_list = random.sample(relay_nodes.items(), random.randint(1, config.HOP_LIMIT)
